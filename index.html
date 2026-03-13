@@ -99,7 +99,32 @@ const S = {
   suc:       { color: G, fontSize: 13, margin: "0 0 10px", fontWeight: 600 },
 };
 
-// ── App ───────────────────────────────────────────────────────────────────────
+// ── Hall icon palette ─────────────────────────────────────────────────────────
+const HALL_ICONS = [
+  "🏔️","⛰️","🪨","🧗","🏕️","🌲","🌄","🗻","🏞️","⛺",
+  "🦅","🐦","🌿","🍃","🌊","❄️","🔥","⚡","🌙","⭐",
+  "🏆","🥇","💪","🎯","🎪","🏟️","🛤️","🪜","🔑","🧲",
+];
+
+function EmojiPicker({ value, onChange }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <p style={{ fontSize: 12, color: "#666", marginBottom: 6, fontWeight: 600 }}>Icon wählen:</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {HALL_ICONS.map(e => (
+          <button key={e} onClick={() => onChange(e)} style={{
+            width: 38, height: 38, fontSize: 20, border: value === e ? `2px solid ${G}` : "2px solid #ddd",
+            borderRadius: 8, background: value === e ? GL : "#fff", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: value === e ? `0 0 0 2px ${G}33` : "none", transition: "all .15s",
+          }}>{e}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 function App() {
   const [users,        setUsers]        = useState([]);
   const [halls,        setHalls]        = useState([]);
@@ -407,10 +432,8 @@ alter table cw_climbs disable row level security;`}</pre>
                 <div>
                   <div style={{ ...S.card, border: `1px solid ${G}33` }}>
                     <div style={{ fontWeight: 800, color: G, marginBottom: 12 }}>+ Neue Halle</div>
-                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                      <input style={{ ...S.inp, marginBottom: 0, flex: 1 }} placeholder="Hallenname" value={newHallName} onChange={e => setNewHallName(e.target.value)} />
-                      <input style={{ ...S.inp, marginBottom: 0, width: 54, textAlign: "center", fontSize: 20, padding: "12px 8px" }} placeholder="🏔️" value={newHallEmoji} onChange={e => setNewHallEmoji(e.target.value)} />
-                    </div>
+                    <input style={S.inp} placeholder="Hallenname" value={newHallName} onChange={e => setNewHallName(e.target.value)} />
+                    <EmojiPicker value={newHallEmoji} onChange={setNewHallEmoji} />
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                       <span style={{ color: "#555", fontSize: 13 }}>Farbe:</span>
                       <input type="color" value={newHallColor} onChange={e => setNewHallColor(e.target.value)} style={{ width: 36, height: 36, border: "none", background: "none", cursor: "pointer", borderRadius: 6 }} />
@@ -429,6 +452,7 @@ alter table cw_climbs disable row level security;`}</pre>
                         <button onClick={() => setEditHalls(p => p.filter(x => x.id !== h.id))}
                           style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, color: "#c0392b", cursor: "pointer", padding: "4px 10px", fontSize: 12, fontFamily: "inherit" }}>✕ Löschen</button>
                       </div>
+                      <EmojiPicker value={h.emoji} onChange={e => setEditHalls(p => p.map(hh => hh.id === h.id ? { ...hh, emoji: e } : hh))} />
                       {h.routes.map(r => (
                         <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, background: "#f0f5f0", borderRadius: 8, padding: "8px 10px" }}>
                           <span style={{ flex: 1, color: "#333", fontSize: 14 }}>{r.name}</span>
@@ -541,6 +565,7 @@ alter table cw_climbs disable row level security;`}</pre>
         <div style={S.navBar}>
           <button style={S.navBtn(tab === "halls")} onClick={() => setTab("halls")}>Hallen & Routen</button>
           <button style={S.navBtn(tab === "stats")} onClick={() => { loadAll(); setTab("stats"); }}>Meine Stats</button>
+          <button style={S.navBtn(tab === "gruppe")} onClick={() => { loadAll(); setTab("gruppe"); }}>Gruppe</button>
         </div>
 
         {tab === "halls" && (
@@ -652,6 +677,63 @@ alter table cw_climbs disable row level security;`}</pre>
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {tab === "gruppe" && (
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px 80px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 1 }}>
+                {myKat === "jugend" ? "🧒 Kategorie Jugend (≤16)" : "🧑 Kategorie Erwachsene"}
+              </div>
+              <span style={{ background: GL, border: `1px solid ${G}44`, borderRadius: 99, padding: "3px 10px", fontSize: 12, color: G, fontWeight: 700 }}>
+                {leaderboard.length} Teiln.
+              </span>
+            </div>
+
+            {leaderboard.length === 0 && (
+              <p style={{ color: "#aaa", textAlign: "center", marginTop: 48 }}>Noch keine Teilnehmenden in deiner Kategorie.</p>
+            )}
+
+            {leaderboard.map((u, i) => {
+              const isMe = u.name === me;
+              const uByHall = halls.map(h => ({
+                name: h.name, emoji: h.emoji, color: h.color,
+                done:   h.routes.filter(r => climbs.some(c => c.username === u.name && c.route_id === r.id)).length,
+                total:  h.routes.length,
+                meters: h.routes.filter(r => climbs.some(c => c.username === u.name && c.route_id === r.id)).reduce((s,r) => s+r.meters, 0),
+              }));
+              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+              return (
+                <div key={u.name} style={{ ...S.card, border: isMe ? `2px solid ${G}` : "1px solid #dceadc", background: isMe ? GL : "#f8faf8" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: isMe ? G : "#e8eee8", border: `2px solid ${isMe ? G : "#c8d8c8"}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: isMe ? "#fff" : "#888", fontSize: medal ? 16 : 13, flexShrink: 0 }}>
+                      {medal || (i + 1)}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: isMe ? G : "#222" }}>
+                        {u.name}{isMe && <span style={{ fontSize: 11, color: G, marginLeft: 6, fontWeight: 600 }}>(Du)</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#888" }}>{u.routes} Routen</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: medal === "🥇" ? "#c8a800" : isMe ? G : "#444" }}>{u.meters}m</div>
+                      <div style={{ fontSize: 11, color: "#aaa" }}>{totalMeters > 0 ? Math.round(u.meters/totalMeters*100) : 0}% v. max</div>
+                    </div>
+                  </div>
+                  <MeterBar value={u.meters} max={leaderboard[0]?.meters || 1} color={medal === "🥇" ? "#c8a800" : isMe ? G : "#c0d8c0"} />
+                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {uByHall.filter(h => h.total > 0).map(h => (
+                      <div key={h.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 13, width: 20, flexShrink: 0 }}>{h.emoji}</span>
+                        <div style={{ flex: 1 }}><MeterBar value={h.done} max={h.total} color={h.color} /></div>
+                        <span style={{ fontSize: 11, color: "#888", width: 68, textAlign: "right", flexShrink: 0 }}>{h.meters}m ({h.done}/{h.total})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
