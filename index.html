@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kletter-Cup 2026 · DAV Lindau</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f0f5f0; font-family: 'Segoe UI', 'Helvetica Neue', sans-serif; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    input:focus { outline: 2px solid #2d6a2d; outline-offset: 1px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ── Supabase ──────────────────────────────────────────────────────────────────
+const SB_URL = "https://hjrhwzistriyvjygyumy.supabase.co";
+const SB_KEY = "sb_publishable_kNAF3QWfn0wNmNbWanjw_A_hqKAFQSz";
+
+const sb = async (path, opts = {}) => {
+  const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: opts.prefer || "",
+    },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+};
+
+// ── Default halls ─────────────────────────────────────────────────────────────
+const DEFAULT_HALLS = [
+  { id: "h1", name: "Kletterhalle Bergheim", color: "#f97316", emoji: "🏔️",
+    routes: [
+      { id: "h1r1", name: "Sonnenweg", meters: 12 },
+      { id: "h1r2", name: "Felsgrat", meters: 18 },
+      { id: "h1r3", name: "Nordwand", meters: 22 },
+      { id: "h1r4", name: "Gipfelstürmer", meters: 30 },
+      { id: "h1r5", name: "Adlerhorst", meters: 25 },
+    ]},
+  { id: "h2", name: "Kletterzentrum Alpina", color: "#22d3ee", emoji: "⛰️",
+    routes: [
+      { id: "h2r1", name: "Blaue Lagune", meters: 15 },
+      { id: "h2r2", name: "Silberpfad", meters: 20 },
+      { id: "h2r3", name: "Eiswand", meters: 28 },
+      { id: "h2r4", name: "Kristallkante", meters: 16 },
+    ]},
+  { id: "h3", name: "Boulder World", color: "#a78bfa", emoji: "🪨",
+    routes: [
+      { id: "h3r1", name: "Purpurtraum", meters: 8 },
+      { id: "h3r2", name: "Violetter Riegel", meters: 10 },
+      { id: "h3r3", name: "Mondstein", meters: 14 },
+      { id: "h3r4", name: "Sternenstaub", meters: 12 },
+    ]},
+];
+
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const G  = "#2d6a2d";
+const GD = "#1e4d1e";
+const GL = "#e8f2e8";
+
+// ── Components ────────────────────────────────────────────────────────────────
+function MeterBar({ value, max, color }) {
+  const pct = max ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div style={{ background: "#ddeadd", borderRadius: 99, height: 9, overflow: "hidden" }}>
+      <div style={{ width: `${pct}%`, height: "100%", background: color || G, borderRadius: 99, transition: "width .5s cubic-bezier(.22,1,.36,1)" }} />
+    </div>
+  );
+}
+
+const S = {
+  page:      { minHeight: "100vh", background: "#f0f5f0", display: "flex", justifyContent: "center" },
+  shell:     { width: "100%", maxWidth: 480, minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column", boxShadow: "0 0 40px rgba(0,0,0,0.08)" },
+  hdr:       { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: G, borderBottom: `3px solid ${GD}`, position: "sticky", top: 0, zIndex: 20 },
+  hdrTitle:  { fontSize: 16, fontWeight: 800, color: "#fff", margin: 0 },
+  iconBtn:   { background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "7px 11px", cursor: "pointer", fontSize: 15, color: "#fff", fontFamily: "inherit" },
+  loginWrap: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "#f0f5f0" },
+  loginCard: { width: "100%", maxWidth: 360, background: "#fff", border: "1px solid #ccdccc", borderRadius: 16, padding: "40px 28px", textAlign: "center", boxShadow: "0 4px 24px rgba(45,106,45,0.1)" },
+  seg:       { display: "flex", background: GL, borderRadius: 10, overflow: "hidden", marginBottom: 20, border: "1px solid #c0d8c0" },
+  segBtn:    (a) => ({ flex: 1, padding: "9px 0", background: a ? G : "transparent", border: "none", color: a ? "#fff" : G, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 14 }),
+  inp:       { width: "100%", padding: "12px 14px", marginBottom: 12, background: "#f8faf8", border: "1px solid #c0d8c0", borderRadius: 10, color: "#222", fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit" },
+  btn:       { width: "100%", padding: "13px 0", background: G, border: "none", borderRadius: 10, color: "#fff", fontWeight: 800, fontSize: 16, cursor: "pointer", fontFamily: "inherit" },
+  navBar:    { display: "flex", borderBottom: "2px solid #e0eae0", background: "#fff" },
+  navBtn:    (a) => ({ flex: 1, padding: "12px 0", background: "none", border: "none", borderBottom: a ? `3px solid ${G}` : "3px solid transparent", color: a ? G : "#999", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }),
+  card:      { background: "#f8faf8", border: "1px solid #dceadc", borderRadius: 12, padding: "14px 16px", marginBottom: 10 },
+  pill:      (c) => ({ display: "inline-flex", alignItems: "center", background: (c||G)+"18", border: `1px solid ${(c||G)}55`, borderRadius: 99, padding: "3px 10px", fontSize: 13, color: c||G, fontWeight: 700 }),
+  err:       { color: "#c0392b", fontSize: 13, margin: "0 0 10px", fontWeight: 600 },
+  suc:       { color: G, fontSize: 13, margin: "0 0 10px", fontWeight: 600 },
+};
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App() {
+  const [users,        setUsers]        = useState([]);
+  const [halls,        setHalls]        = useState([]);
+  const [climbs,       setClimbs]       = useState([]);
+  const [me,           setMe]           = useState(null);
+  const [screen,       setScreen]       = useState("login");
+  const [tab,          setTab]          = useState("halls");
+  const [activeHall,   setActiveHall]   = useState(null);
+  const [loginName,    setLoginName]    = useState("");
+  const [loginPin,     setLoginPin]     = useState("");
+  const [isReg,        setIsReg]        = useState(false);
+  const [msg,          setMsg]          = useState({ text: "", ok: true });
+  const [loading,      setLoading]      = useState(true);
+  const [dbError,      setDbError]      = useState(null);
+  const [adminUnlocked,setAdminUnlocked]= useState(false);
+  const [adminPinInput,setAdminPinInput]= useState("");
+  const [adminTab,     setAdminTab]     = useState("teilnehmer");
+  const [editHalls,    setEditHalls]    = useState(null);
+  const [newHallName,  setNewHallName]  = useState("");
+  const [newHallEmoji, setNewHallEmoji] = useState("🏔️");
+  const [newHallColor, setNewHallColor] = useState("#f97316");
+  const [addRouteTo,   setAddRouteTo]   = useState(null);
+  const [newRouteName, setNewRouteName] = useState("");
+  const [newRouteM,    setNewRouteM]    = useState("");
+  const ADMIN_PIN = "admin123";
+
+  const flash = (text, ok = true) => {
+    setMsg({ text, ok });
+    setTimeout(() => setMsg({ text: "", ok: true }), 3000);
+  };
+
+  // ── Load ────────────────────────────────────────────────────────────────────
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [u, h, c] = await Promise.all([
+        sb("cw_users?select=name,pin"),
+        sb("cw_halls?select=id,data&order=id"),
+        sb("cw_climbs?select=username,route_id"),
+      ]);
+      setUsers(u || []);
+      if (!h || h.length === 0) {
+        await Promise.all(DEFAULT_HALLS.map(hall =>
+          sb("cw_halls", { method: "POST", prefer: "return=minimal", body: JSON.stringify({ id: hall.id, data: hall }) })
+        ));
+        setHalls(DEFAULT_HALLS);
+      } else {
+        setHalls(h.map(row => row.data));
+      }
+      setClimbs(c || []);
+      setDbError(null);
+    } catch (e) {
+      setDbError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadAll(); }, []);
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+  const doLogin = async () => {
+    const n = loginName.trim();
+    if (!n || !loginPin) { flash("Name und PIN eingeben!", false); return; }
+    if (isReg) {
+      if (users.find(u => u.name === n)) { flash("Name bereits vergeben.", false); return; }
+      if (loginPin.length < 3) { flash("PIN mind. 3 Zeichen.", false); return; }
+      try {
+        await sb("cw_users", { method: "POST", prefer: "return=minimal", body: JSON.stringify({ name: n, pin: loginPin }) });
+        setUsers(p => [...p, { name: n, pin: loginPin }]);
+        setMe(n); setScreen("main");
+        flash(`Willkommen, ${n}! 🧗`);
+      } catch { flash("Fehler beim Registrieren.", false); return; }
+    } else {
+      const u = users.find(u => u.name === n);
+      if (!u) { flash("Benutzer nicht gefunden.", false); return; }
+      if (u.pin !== loginPin) { flash("Falscher PIN.", false); return; }
+      setMe(n); setScreen("main");
+    }
+    setLoginName(""); setLoginPin("");
+  };
+
+  // ── Toggle climb ────────────────────────────────────────────────────────────
+  const toggle = async (routeId) => {
+    const exists = climbs.find(c => c.username === me && c.route_id === routeId);
+    if (exists) {
+      setClimbs(p => p.filter(c => !(c.username === me && c.route_id === routeId)));
+      await sb(`cw_climbs?username=eq.${encodeURIComponent(me)}&route_id=eq.${encodeURIComponent(routeId)}`, { method: "DELETE" });
+    } else {
+      setClimbs(p => [...p, { username: me, route_id: routeId }]);
+      await sb("cw_climbs", { method: "POST", prefer: "return=minimal", body: JSON.stringify({ username: me, route_id: routeId }) });
+    }
+  };
+
+  // ── Admin helpers ───────────────────────────────────────────────────────────
+  const saveAdmin = async () => {
+    try {
+      await Promise.all(editHalls.map(h =>
+        sb("cw_halls", { method: "POST", prefer: "resolution=merge-duplicates,return=minimal", body: JSON.stringify({ id: h.id, data: h }) })
+      ));
+      const removed = halls.map(h => h.id).filter(id => !editHalls.find(e => e.id === id));
+      await Promise.all(removed.map(id => sb(`cw_halls?id=eq.${id}`, { method: "DELETE" })));
+      setHalls(editHalls);
+      flash("Gespeichert ✓");
+    } catch (e) { flash("Fehler: " + e.message, false); }
+  };
+
+  const addHall = () => {
+    if (!newHallName.trim()) return;
+    setEditHalls(p => [...p, { id: "h" + Date.now(), name: newHallName.trim(), color: newHallColor, emoji: newHallEmoji, routes: [] }]);
+    setNewHallName(""); setNewHallEmoji("🏔️"); setNewHallColor("#f97316");
+  };
+
+  const addRoute = (hid) => {
+    if (!newRouteName.trim() || !newRouteM) return;
+    setEditHalls(p => p.map(h => h.id === hid ? { ...h, routes: [...h.routes, { id: "r" + Date.now(), name: newRouteName.trim(), meters: parseInt(newRouteM) }] } : h));
+    setNewRouteName(""); setNewRouteM(""); setAddRouteTo(null);
+  };
+
+  // ── Stats ───────────────────────────────────────────────────────────────────
+  const allRoutes   = halls.flatMap(h => h.routes.map(r => ({ ...r, hallId: h.id })));
+  const userMeters  = (uid) => climbs.filter(c => c.username === uid).reduce((s, c) => { const r = allRoutes.find(x => x.id === c.route_id); return s + (r ? r.meters : 0); }, 0);
+  const userCount   = (uid) => climbs.filter(c => c.username === uid).length;
+  const allNames    = users.map(u => u.name);
+  const avgMeters   = allNames.length ? allNames.reduce((s, u) => s + userMeters(u), 0) / allNames.length : 0;
+  const avgRoutes   = allNames.length ? allNames.reduce((s, u) => s + userCount(u), 0) / allNames.length : 0;
+  const myMeters    = me ? userMeters(me) : 0;
+  const myCount     = me ? userCount(me) : 0;
+  const totalMeters = halls.flatMap(h => h.routes).reduce((s, r) => s + r.meters, 0);
+  const leaderboard = [...allNames].map(u => ({ name: u, meters: userMeters(u), routes: userCount(u) })).sort((a, b) => b.meters - a.meters);
+
+  // ── Loading ─────────────────────────────────────────────────────────────────
+  if (loading) return (
+    <div style={{ ...S.page, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, minHeight: "100vh" }}>
+      <div style={{ width: 40, height: 40, border: `3px solid ${GL}`, borderTop: `3px solid ${G}`, borderRadius: "50%", animation: "spin .7s linear infinite" }} />
+      <p style={{ color: G, fontWeight: 600 }}>Verbinde mit Datenbank…</p>
+    </div>
+  );
+
+  // ── DB Error ────────────────────────────────────────────────────────────────
+  if (dbError) return (
+    <div style={{ ...S.page, alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+      <div style={{ ...S.loginCard, maxWidth: 440 }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
+        <h2 style={{ color: "#c0392b", marginBottom: 8 }}>Datenbankfehler</h2>
+        <p style={{ color: "#666", fontSize: 13, marginBottom: 12 }}>Fehlermeldung:</p>
+        <pre style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: 12, fontSize: 11, textAlign: "left", overflowX: "auto", color: "#c0392b", whiteSpace: "pre-wrap", marginBottom: 16 }}>{dbError}</pre>
+        <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>Stelle sicher dass die Tabellen existieren und RLS deaktiviert ist:</p>
+        <pre style={{ background: "#f0f5f0", border: `1px solid ${G}33`, borderRadius: 8, padding: 12, fontSize: 11, textAlign: "left", overflowX: "auto", color: "#333", whiteSpace: "pre-wrap", marginBottom: 16 }}>{`alter table cw_users  disable row level security;
+alter table cw_halls  disable row level security;
+alter table cw_climbs disable row level security;`}</pre>
+        <button style={S.btn} onClick={loadAll}>↻ Erneut versuchen</button>
+      </div>
+    </div>
+  );
+
+  // ── LOGIN ───────────────────────────────────────────────────────────────────
+  if (screen === "login") return (
+    <div style={{ ...S.page, minHeight: "100vh" }}>
+      <div style={S.loginWrap}>
+        <div style={S.loginCard}>
+          <div style={{ fontSize: 52, marginBottom: 6 }}>🧗</div>
+          <h1 style={{ fontSize: 30, fontWeight: 900, color: GD, margin: "0 0 4px" }}>Kletter<span style={{ color: G }}>-Cup 2026</span></h1>
+          <p style={{ color: "#888", fontSize: 13, marginBottom: 28 }}>Jugend-Wettkampf · DAV Lindau</p>
+          <div style={S.seg}>
+            <button style={S.segBtn(!isReg)} onClick={() => setIsReg(false)}>Anmelden</button>
+            <button style={S.segBtn(isReg)}  onClick={() => setIsReg(true)}>Registrieren</button>
+          </div>
+          {msg.text && <p style={msg.ok ? S.suc : S.err}>{msg.text}</p>}
+          <input style={S.inp} placeholder="Dein Name" value={loginName} onChange={e => setLoginName(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} />
+          <input style={S.inp} type="password" placeholder={isReg ? "PIN wählen (mind. 3 Zeichen)" : "PIN"} value={loginPin} onChange={e => setLoginPin(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} />
+          <button style={S.btn} onClick={doLogin}>{isReg ? "Konto erstellen →" : "Einloggen →"}</button>
+          {allNames.length > 0 && <p style={{ color: "#aaa", fontSize: 12, marginTop: 16 }}>{allNames.length} Teilnehmer:in(nen) aktiv</p>}
+          <button style={{ background: "none", border: "none", color: "#ccc", fontSize: 12, cursor: "pointer", marginTop: 12, fontFamily: "inherit" }}
+            onClick={() => { setAdminUnlocked(false); setAdminPinInput(""); setEditHalls(JSON.parse(JSON.stringify(halls))); setScreen("admin"); }}>
+            ⚙ Admin
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── ADMIN ───────────────────────────────────────────────────────────────────
+  if (screen === "admin") return (
+    <div style={{ ...S.page, minHeight: "100vh" }}>
+      <div style={S.shell}>
+        <header style={S.hdr}>
+          <button style={S.iconBtn} onClick={() => setScreen("login")}>← Zurück</button>
+          <span style={S.hdrTitle}>⚙️ Admin-Bereich</span>
+          <button style={S.iconBtn} onClick={loadAll}>↻</button>
+        </header>
+        {!adminUnlocked ? (
+          <div style={{ padding: 32, maxWidth: 320, margin: "40px auto", textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+            <p style={{ color: "#666", marginBottom: 16, fontSize: 14 }}>Admin-PIN eingeben</p>
+            {msg.text && <p style={S.err}>{msg.text}</p>}
+            <input style={S.inp} type="password" placeholder="Admin-PIN" value={adminPinInput} onChange={e => setAdminPinInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && (adminPinInput === ADMIN_PIN ? setAdminUnlocked(true) : flash("Falscher PIN", false))} />
+            <button style={S.btn} onClick={() => adminPinInput === ADMIN_PIN ? setAdminUnlocked(true) : flash("Falscher PIN", false)}>Entsperren</button>
+            <p style={{ color: "#ccc", fontSize: 11, marginTop: 14 }}>Standard-PIN: admin123</p>
+          </div>
+        ) : (
+          <>
+            <div style={S.navBar}>
+              {[["teilnehmer","👥 Teilnehmer"],["hallen","🏔️ Hallen"]].map(([id, label]) => (
+                <button key={id} style={S.navBtn(adminTab === id)} onClick={() => setAdminTab(id)}>{label}</button>
+              ))}
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 14px 80px" }}>
+              {msg.text && <div style={{ ...S.card, color: msg.ok ? G : "#c0392b", border: `1px solid ${msg.ok ? G+"55" : "#c0392b55"}`, marginBottom: 12 }}>{msg.text}</div>}
+
+              {/* TEILNEHMER */}
+              {adminTab === "teilnehmer" && (() => {
+                const sorted = [...allNames].map(u => ({
+                  name: u, meters: userMeters(u), routes: userCount(u),
+                  byHall: halls.map(h => ({
+                    name: h.name, emoji: h.emoji, color: h.color,
+                    done:   h.routes.filter(r => climbs.some(c => c.username === u && c.route_id === r.id)).length,
+                    total:  h.routes.length,
+                    meters: h.routes.filter(r => climbs.some(c => c.username === u && c.route_id === r.id)).reduce((s,r) => s+r.meters, 0),
+                  }))
+                })).sort((a, b) => b.meters - a.meters);
+
+                if (sorted.length === 0) return <p style={{ color: "#aaa", textAlign: "center", marginTop: 40 }}>Noch keine Teilnehmenden registriert.</p>;
+                return (
+                  <div>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                      {[
+                        { label: "Teilnehmende", val: sorted.length },
+                        { label: "Ø Meter", val: Math.round(sorted.reduce((s,u)=>s+u.meters,0)/sorted.length)+"m" },
+                        { label: "Ø Routen", val: (sorted.reduce((s,u)=>s+u.routes,0)/sorted.length).toFixed(1) },
+                      ].map((x,i) => (
+                        <div key={i} style={{ flex: 1, background: GL, borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
+                          <div style={{ fontSize: 18, fontWeight: 900, color: GD }}>{x.val}</div>
+                          <div style={{ fontSize: 10, color: "#6a8a6a", fontWeight: 600, textTransform: "uppercase", marginTop: 2 }}>{x.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {sorted.map((u, i) => (
+                      <div key={u.name} style={S.card}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: "50%", background: GL, border: `2px solid ${G}44`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: G, fontSize: 13, flexShrink: 0 }}>{i+1}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 800, fontSize: 15, color: "#222" }}>{u.name}</div>
+                            <div style={{ fontSize: 12, color: "#888" }}>{u.routes} Routen geklettert</div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 18, fontWeight: 900, color: G }}>{u.meters}m</div>
+                            <div style={{ fontSize: 11, color: "#aaa" }}>{totalMeters > 0 ? Math.round(u.meters/totalMeters*100) : 0}% v. max</div>
+                          </div>
+                        </div>
+                        <MeterBar value={u.meters} max={totalMeters || 1} color={G} />
+                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+                          {u.byHall.filter(h => h.total > 0).map(h => (
+                            <div key={h.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 14, width: 20, flexShrink: 0 }}>{h.emoji}</span>
+                              <div style={{ flex: 1 }}><MeterBar value={h.done} max={h.total} color={h.color} /></div>
+                              <span style={{ fontSize: 12, color: "#888", width: 70, textAlign: "right", flexShrink: 0 }}>{h.meters}m ({h.done}/{h.total})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* HALLEN */}
+              {adminTab === "hallen" && (
+                <div>
+                  <div style={{ ...S.card, border: `1px solid ${G}33` }}>
+                    <div style={{ fontWeight: 800, color: G, marginBottom: 12 }}>+ Neue Halle</div>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <input style={{ ...S.inp, marginBottom: 0, flex: 1 }} placeholder="Hallenname" value={newHallName} onChange={e => setNewHallName(e.target.value)} />
+                      <input style={{ ...S.inp, marginBottom: 0, width: 54, textAlign: "center", fontSize: 20, padding: "12px 8px" }} placeholder="🏔️" value={newHallEmoji} onChange={e => setNewHallEmoji(e.target.value)} />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                      <span style={{ color: "#555", fontSize: 13 }}>Farbe:</span>
+                      <input type="color" value={newHallColor} onChange={e => setNewHallColor(e.target.value)} style={{ width: 36, height: 36, border: "none", background: "none", cursor: "pointer", borderRadius: 6 }} />
+                      <span style={{ color: newHallColor, fontWeight: 700, fontSize: 13 }}>{newHallColor}</span>
+                    </div>
+                    <button style={{ ...S.btn, width: "auto", padding: "9px 22px", fontSize: 14 }} onClick={addHall}>Halle hinzufügen</button>
+                  </div>
+                  {(editHalls || []).map(h => (
+                    <div key={h.id} style={{ ...S.card, border: `1px solid ${h.color}33` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 22 }}>{h.emoji}</span>
+                          <span style={{ fontWeight: 800, color: h.color }}>{h.name}</span>
+                          <span style={{ color: "#666", fontSize: 12 }}>{h.routes.length} Routen</span>
+                        </div>
+                        <button onClick={() => setEditHalls(p => p.filter(x => x.id !== h.id))}
+                          style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, color: "#c0392b", cursor: "pointer", padding: "4px 10px", fontSize: 12, fontFamily: "inherit" }}>✕ Löschen</button>
+                      </div>
+                      {h.routes.map(r => (
+                        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, background: "#f0f5f0", borderRadius: 8, padding: "8px 10px" }}>
+                          <span style={{ flex: 1, color: "#333", fontSize: 14 }}>{r.name}</span>
+                          <input type="number" min="1" max="200" value={r.meters}
+                            onChange={e => setEditHalls(p => p.map(hh => hh.id === h.id ? { ...hh, routes: hh.routes.map(rr => rr.id === r.id ? { ...rr, meters: parseInt(e.target.value)||rr.meters } : rr) } : hh))}
+                            style={{ width: 56, background: "#fff", border: `1px solid ${G}55`, borderRadius: 6, color: G, fontWeight: 700, fontSize: 14, padding: "4px 6px", textAlign: "center", fontFamily: "inherit" }} />
+                          <span style={{ color: "#888", fontSize: 12, marginRight: 4 }}>m</span>
+                          <button onClick={() => setEditHalls(p => p.map(hh => hh.id === h.id ? { ...hh, routes: hh.routes.filter(rr => rr.id !== r.id) } : hh))}
+                            style={{ background: "none", border: "none", color: "#fca5a5", cursor: "pointer", fontSize: 16 }}>✕</button>
+                        </div>
+                      ))}
+                      {addRouteTo === h.id ? (
+                        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                          <input style={{ ...S.inp, marginBottom: 0, flex: 1, fontSize: 13, padding: "8px 10px" }} placeholder="Routenname" value={newRouteName} onChange={e => setNewRouteName(e.target.value)} />
+                          <input type="number" style={{ ...S.inp, marginBottom: 0, width: 60, fontSize: 13, padding: "8px 6px", textAlign: "center" }} placeholder="m" value={newRouteM} onChange={e => setNewRouteM(e.target.value)} />
+                          <button style={{ background: G, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", padding: "8px 12px", fontFamily: "inherit" }} onClick={() => addRoute(h.id)}>+</button>
+                          <button style={{ background: "#f0f5f0", border: "none", borderRadius: 8, color: "#888", cursor: "pointer", padding: "8px 10px", fontFamily: "inherit" }} onClick={() => setAddRouteTo(null)}>✕</button>
+                        </div>
+                      ) : (
+                        <button style={{ marginTop: 8, background: "none", border: `1px dashed ${h.color}55`, borderRadius: 8, color: h.color+"aa", cursor: "pointer", padding: "7px 14px", fontSize: 13, fontFamily: "inherit", width: "100%" }}
+                          onClick={() => setAddRouteTo(h.id)}>+ Route hinzufügen</button>
+                      )}
+                    </div>
+                  ))}
+                  <button style={{ ...S.btn, marginTop: 6 }} onClick={saveAdmin}>💾 Alles speichern</button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── LEADERBOARD ─────────────────────────────────────────────────────────────
+  if (screen === "board") return (
+    <div style={{ ...S.page, minHeight: "100vh" }}>
+      <div style={S.shell}>
+        <header style={S.hdr}>
+          <button style={S.iconBtn} onClick={() => setScreen("main")}>← Zurück</button>
+          <span style={S.hdrTitle}>🏆 Rangliste</span>
+          <button style={S.iconBtn} onClick={loadAll}>↻</button>
+        </header>
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 14px 40px" }}>
+          <p style={{ color: "#aaa", fontSize: 12, textAlign: "center", marginBottom: 16 }}>Sortiert nach gekletterten Metern</p>
+          {leaderboard.map((u, i) => {
+            const isMe = u.name === me;
+            return (
+              <div key={u.name} style={{ ...S.card, border: isMe ? `2px solid ${G}` : "1px solid #dceadc", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                  <div style={{ fontSize: 20, width: 32, textAlign: "center", flexShrink: 0 }}>
+                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : <span style={{ color: "#aaa", fontWeight: 700 }}>{i+1}</span>}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: isMe ? G : "#222" }}>
+                      {u.name}{isMe && <span style={{ fontSize: 11, color: "#aaa", marginLeft: 6 }}>(Du)</span>}
+                    </div>
+                    <div style={{ color: "#888", fontSize: 12 }}>{u.routes} Routen</div>
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: i === 0 ? "#c8a800" : G }}>{u.meters}m</div>
+                </div>
+                <MeterBar value={u.meters} max={leaderboard[0]?.meters || 1} color={i === 0 ? "#c8a800" : isMe ? G : "#c0d8c0"} />
+              </div>
+            );
+          })}
+          {leaderboard.length === 0 && <p style={{ color: "#aaa", textAlign: "center", marginTop: 48 }}>Noch keine Einträge.</p>}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── MAIN ────────────────────────────────────────────────────────────────────
+  return (
+    <div style={{ ...S.page, minHeight: "100vh" }}>
+      <div style={S.shell}>
+        <header style={S.hdr}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>{me}</div>
+            <div style={{ fontSize: 11, color: "#a8d5a8", fontWeight: 600 }}>{myMeters}m · {myCount} Routen</div>
+          </div>
+          <span style={S.hdrTitle}>🧗 Kletter-Cup 2026</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button style={S.iconBtn} onClick={() => { loadAll(); setScreen("board"); }}>🏆</button>
+            <button style={S.iconBtn} onClick={() => { setMe(null); setScreen("login"); setActiveHall(null); setTab("halls"); }}>⏏</button>
+          </div>
+        </header>
+
+        <div style={{ display: "flex", background: GL, borderBottom: "1px solid #c8ddc8" }}>
+          {[
+            { label: "Meine Meter", val: `${myMeters}m`, color: GD },
+            { label: "Routen", val: myCount, color: GD },
+            { label: `vs Ø (${avgMeters.toFixed(0)}m)`, val: `${myMeters >= avgMeters ? "▲" : "▼"}${Math.abs(myMeters - avgMeters).toFixed(0)}m`, color: myMeters >= avgMeters ? "#1a7a3a" : "#c0392b" },
+          ].map((s, i) => (
+            <div key={i} style={{ flex: 1, textAlign: "center", padding: "10px 4px", borderRight: i < 2 ? "1px solid #c8ddc8" : "none" }}>
+              <div style={{ fontSize: 18, fontWeight: 900, color: s.color }}>{s.val}</div>
+              <div style={{ fontSize: 10, color: "#6a8a6a", fontWeight: 600, textTransform: "uppercase", marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: "10px 16px", background: GL, borderBottom: "1px solid #c8ddc8" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#6a8a6a", marginBottom: 5 }}>
+            <span>Gesamt-Fortschritt</span><span>{myMeters}m / {totalMeters}m</span>
+          </div>
+          <MeterBar value={myMeters} max={totalMeters || 1} color={G} />
+        </div>
+
+        <div style={S.navBar}>
+          <button style={S.navBtn(tab === "halls")} onClick={() => setTab("halls")}>Hallen & Routen</button>
+          <button style={S.navBtn(tab === "stats")} onClick={() => { loadAll(); setTab("stats"); }}>Meine Stats</button>
+        </div>
+
+        {tab === "halls" && (
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px 80px" }}>
+            {activeHall === null ? (
+              <div>
+                <p style={{ color: "#888", fontSize: 12, marginBottom: 14 }}>Tippe auf eine Halle um Routen zu erfassen.</p>
+                {halls.map(h => {
+                  const myDone = h.routes.filter(r => climbs.some(c => c.username === me && c.route_id === r.id));
+                  const doneM  = myDone.reduce((s, r) => s + r.meters, 0);
+                  const totalM = h.routes.reduce((s, r) => s + r.meters, 0);
+                  return (
+                    <button key={h.id} onClick={() => setActiveHall(h.id)}
+                      style={{ ...S.card, width: "100%", textAlign: "left", cursor: "pointer", border: `1px solid ${h.color}33`, display: "block", padding: "14px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                        <span style={{ fontSize: 28 }}>{h.emoji}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: "#222" }}>{h.name}</div>
+                          <div style={{ fontSize: 12, color: "#666" }}>{h.routes.length} Routen · {totalM}m total</div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 18, fontWeight: 900, color: h.color }}>{doneM}m</div>
+                          <div style={{ fontSize: 11, color: "#aaa" }}>{myDone.length}/{h.routes.length}</div>
+                        </div>
+                      </div>
+                      <MeterBar value={myDone.length} max={h.routes.length || 1} color={h.color} />
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (() => {
+              const h = halls.find(x => x.id === activeHall);
+              if (!h) return null;
+              return (
+                <div>
+                  <button style={{ background: "none", border: "none", color: h.color, fontWeight: 700, fontSize: 14, cursor: "pointer", padding: "0 0 14px", fontFamily: "inherit" }} onClick={() => setActiveHall(null)}>← Alle Hallen</button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                    <span style={{ fontSize: 32 }}>{h.emoji}</span>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 20, color: "#222" }}>{h.name}</div>
+                      <div style={{ fontSize: 12, color: "#666" }}>{h.routes.length} Routen · {h.routes.reduce((s,r)=>s+r.meters,0)}m total</div>
+                    </div>
+                  </div>
+                  {h.routes.length === 0 && <p style={{ color: "#aaa", textAlign: "center", marginTop: 40 }}>Noch keine Routen. Admin kann sie hinzufügen.</p>}
+                  {h.routes.map(r => {
+                    const done = climbs.some(c => c.username === me && c.route_id === r.id);
+                    return (
+                      <button key={r.id} onClick={() => toggle(r.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, background: done ? h.color+"18" : "#fff", border: `2px solid ${done ? h.color : "#dceadc"}`, borderRadius: 12, padding: "13px 15px", marginBottom: 8, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "all .2s", boxShadow: done ? `0 2px 10px ${h.color}22` : "none" }}>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: done ? h.color : GL, border: `2px solid ${done ? h.color : "#c0d8c0"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0, color: done ? "#fff" : "#aaa" }}>
+                          {done ? "✓" : ""}
+                        </div>
+                        <div style={{ flex: 1, fontWeight: 700, fontSize: 15, color: done ? "#222" : "#666" }}>{r.name}</div>
+                        <div style={S.pill(done ? h.color : "#aaa")}>{r.meters}m</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {tab === "stats" && (
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px 80px" }}>
+            <div style={{ fontWeight: 800, color: "#888", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Fortschritt pro Halle</div>
+            {halls.map(h => {
+              const done  = h.routes.filter(r => climbs.some(c => c.username === me && c.route_id === r.id));
+              const doneM = done.reduce((s, r) => s + r.meters, 0);
+              const totalM = h.routes.reduce((s, r) => s + r.meters, 0);
+              return (
+                <div key={h.id} style={S.card}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>{h.emoji}</span>
+                      <span style={{ fontWeight: 700, color: h.color, fontSize: 14 }}>{h.name}</span>
+                    </div>
+                    <span style={{ color: "#888", fontSize: 13 }}>{doneM}m / {totalM}m</span>
+                  </div>
+                  <MeterBar value={doneM} max={totalM || 1} color={h.color} />
+                  <div style={{ fontSize: 12, color: "#666", marginTop: 5 }}>{done.length} von {h.routes.length} Routen</div>
+                </div>
+              );
+            })}
+            <div style={{ fontWeight: 800, color: "#888", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, margin: "18px 0 10px" }}>Gruppenvergleich</div>
+            <div style={S.card}>
+              {[
+                { label: "Meter", my: myMeters, avg: avgMeters, color: G, unit: "m" },
+                { label: "Routen", my: myCount, avg: avgRoutes, color: "#4a9e4a", unit: "" },
+              ].map(x => (
+                <div key={x.label} style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 13 }}>
+                    <span style={{ color: "#888" }}>{x.label}</span>
+                    <span style={{ color: "#222", fontWeight: 700 }}>{x.my}{x.unit} <span style={{ color: "#bbb" }}>· Ø {x.avg.toFixed(1)}{x.unit}</span></span>
+                  </div>
+                  <div style={{ position: "relative" }}>
+                    <MeterBar value={x.my} max={Math.max(x.my, x.avg * 1.4, 1)} color={x.color} />
+                    {x.avg > 0 && <div title="Ø" style={{ position: "absolute", top: -3, bottom: -3, width: 2, background: "#c8a800", borderRadius: 99, left: `${Math.min(98, (x.avg / Math.max(x.my, x.avg * 1.4, 1)) * 100)}%` }} />}
+                  </div>
+                </div>
+              ))}
+              <p style={{ color: "#bbb", fontSize: 11, margin: 0 }}>Goldene Linie = Gruppendurchschnitt</p>
+            </div>
+            {leaderboard.length > 1 && (() => {
+              const rank = leaderboard.findIndex(u => u.name === me) + 1;
+              return (
+                <div style={{ ...S.card, textAlign: "center", marginTop: 10, border: `1px solid ${G}44` }}>
+                  <div style={{ fontSize: 40, fontWeight: 900, color: G }}>#{rank}</div>
+                  <div style={{ color: "#888", fontSize: 13 }}>von {leaderboard.length} Teilnehmenden</div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
