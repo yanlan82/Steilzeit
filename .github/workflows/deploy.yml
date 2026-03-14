@@ -1,0 +1,27 @@
+name: Deploy Kletter-Cup
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Supabase Key einsetzen
+        run: |
+          sed -i "s|%%SUPABASE_KEY%%|${{ secrets.SUPABASE_KEY }}|g" index.html
+
+      - name: Auf GitHub Pages deployen
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          exclude_assets: '.github,*.yml,*.md'
