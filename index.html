@@ -21,7 +21,7 @@ const { useState, useEffect, useCallback } = React;
 
 // ── Supabase ──────────────────────────────────────────────────────────────────
 const SB_URL = "https://hjrhwzistriyvjygyumy.supabase.co";
-const SB_KEY = "sb_publishable_kNAF3QWfn0wNmNbWanjw_A_hqKAFQSz";
+const SB_KEY = "%%SUPABASE_KEY%%";
 
 const sb = async (path, opts = {}) => {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
