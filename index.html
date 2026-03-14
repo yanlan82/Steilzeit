@@ -294,7 +294,7 @@ alter table cw_climbs disable row level security;`}</pre>
         <div style={S.loginCard}>
           <div style={{ fontSize: 52, marginBottom: 6 }}>🧗</div>
           <h1 style={{ fontSize: 30, fontWeight: 900, color: GD, margin: "0 0 4px" }}>Kletter<span style={{ color: G }}>-Cup 2026</span></h1>
-          <p style={{ color: "#888", fontSize: 13, marginBottom: 28 }}>Kletter-Wettkampf · DAV Lindau</p>
+          <p style={{ color: "#888", fontSize: 13, marginBottom: 28 }}>Jugend-Wettkampf · DAV Lindau</p>
           <div style={S.seg}>
             <button style={S.segBtn(!isReg)} onClick={() => setIsReg(false)}>Anmelden</button>
             <button style={S.segBtn(isReg)}  onClick={() => setIsReg(true)}>Registrieren</button>
@@ -348,7 +348,7 @@ alter table cw_climbs disable row level security;`}</pre>
         ) : (
           <>
             <div style={S.navBar}>
-              {[["teilnehmer","👥 Teilnehmer"],["hallen","🏔️ Hallen"]].map(([id, label]) => (
+              {[["teilnehmer","👥 Teilnehmer"],["hallen","🏔️ Hallen"],["export","📥 Export"]].map(([id, label]) => (
                 <button key={id} style={S.navBtn(adminTab === id)} onClick={() => setAdminTab(id)}>{label}</button>
               ))}
             </div>
@@ -480,6 +480,108 @@ alter table cw_climbs disable row level security;`}</pre>
                   <button style={{ ...S.btn, marginTop: 6 }} onClick={saveAdmin}>💾 Alles speichern</button>
                 </div>
               )}
+
+              {/* EXPORT */}
+              {adminTab === "export" && (() => {
+                const downloadCSV = (filename, rows) => {
+                  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+                  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = filename;
+                  a.click();
+                };
+
+                const exportTeilnehmer = () => {
+                  const rows = [["Name", "Kategorie", "Meter gesamt", "Routen gesamt",
+                    ...halls.map(h => `${h.name} – Meter`),
+                    ...halls.map(h => `${h.name} – Routen`),
+                  ]];
+                  allNames.forEach(u => {
+                    const kat = users.find(x => x.name === u)?.kategorie || "–";
+                    rows.push([
+                      u, kat === "jugend" ? "Jugend (≤16)" : "Erwachsene",
+                      userMeters(u), userCount(u),
+                      ...halls.map(h => h.routes.filter(r => climbs.some(c => c.username === u && c.route_id === r.id)).reduce((s,r)=>s+r.meters,0)),
+                      ...halls.map(h => h.routes.filter(r => climbs.some(c => c.username === u && c.route_id === r.id)).length),
+                    ]);
+                  });
+                  downloadCSV("kletter-cup-teilnehmer.csv", rows);
+                };
+
+                const exportClimbs = () => {
+                  const rows = [["Name", "Kategorie", "Halle", "Route", "Meter"]];
+                  allNames.forEach(u => {
+                    const kat = users.find(x => x.name === u)?.kategorie || "–";
+                    climbs.filter(c => c.username === u).forEach(c => {
+                      const route = halls.flatMap(h => h.routes.map(r => ({ ...r, hallName: h.name }))).find(r => r.id === c.route_id);
+                      if (route) rows.push([u, kat === "jugend" ? "Jugend (≤16)" : "Erwachsene", route.hallName, route.name, route.meters]);
+                    });
+                  });
+                  downloadCSV("kletter-cup-routen.csv", rows);
+                };
+
+                const exportHallen = () => {
+                  const rows = [["Hallen-ID", "Hallenname", "Emoji", "Farbe", "Routen-ID", "Routenname", "Meter"]];
+                  halls.forEach(h => {
+                    if (h.routes.length === 0) {
+                      rows.push([h.id, h.name, h.emoji, h.color, "", "", ""]);
+                    } else {
+                      h.routes.forEach(r => rows.push([h.id, h.name, h.emoji, h.color, r.id, r.name, r.meters]));
+                    }
+                  });
+                  downloadCSV("kletter-cup-hallen.csv", rows);
+                };
+
+                const now = new Date().toLocaleDateString("de-DE");
+                return (
+                  <div>
+                    <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
+                      Exportiere alle Daten aus Supabase als CSV-Datei. Stand: {now}
+                    </p>
+
+                    {[
+                      {
+                        icon: "👥", title: "Teilnehmer-Übersicht",
+                        desc: `${allNames.length} Teilnehmende · Gesamtpunkte & Ergebnis pro Halle`,
+                        fn: exportTeilnehmer,
+                        file: "kletter-cup-teilnehmer.csv",
+                      },
+                      {
+                        icon: "🧗", title: "Alle gekletterten Routen",
+                        desc: `${climbs.length} Einträge · Eine Zeile pro gekletterte Route`,
+                        fn: exportClimbs,
+                        file: "kletter-cup-routen.csv",
+                      },
+                      {
+                        icon: "🏔️", title: "Hallen & Routen",
+                        desc: `${halls.length} Hallen · ${halls.flatMap(h=>h.routes).length} Routen`,
+                        fn: exportHallen,
+                        file: "kletter-cup-hallen.csv",
+                      },
+                    ].map(x => (
+                      <div key={x.title} style={{ ...S.card, display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ fontSize: 32, flexShrink: 0 }}>{x.icon}</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: 15, color: "#222", marginBottom: 3 }}>{x.title}</div>
+                          <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>{x.desc}</div>
+                          <div style={{ fontSize: 11, color: "#bbb", fontFamily: "monospace" }}>{x.file}</div>
+                        </div>
+                        <button onClick={x.fn} style={{ background: G, border: "none", borderRadius: 10, color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer", padding: "10px 16px", fontFamily: "inherit", flexShrink: 0 }}>
+                          ↓ CSV
+                        </button>
+                      </div>
+                    ))}
+
+                    <div style={{ ...S.card, background: "#fffbeb", border: "1px solid #fde68a", marginTop: 6 }}>
+                      <div style={{ fontWeight: 700, color: "#92400e", fontSize: 13, marginBottom: 4 }}>💡 Hinweis</div>
+                      <div style={{ color: "#78350f", fontSize: 12 }}>
+                        Die CSV-Dateien sind UTF-8 kodiert (mit BOM) und können direkt in Excel geöffnet werden. Umlaute werden korrekt dargestellt.
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </>
         )}
